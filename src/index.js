@@ -45,21 +45,21 @@ addFilter(
  */
 const findBlockElement = ( clientId ) => {
   if ( ! clientId ) return null;
-  // Normal document first
-  let el = document.querySelector( `[data-block="${ clientId }"]` );
-  if ( el ) return el;
-  // Try canvas iframes (Site Editor / Editor iframe mode)
+  // Priorité: canvas FSE (iframe)
   const frames = Array.from( document.querySelectorAll( 'iframe[name="editor-canvas"], .editor-canvas iframe, iframe.components-iframe__frame' ) );
   for ( const fr of frames ) {
     try {
       const doc = fr.contentDocument || fr.contentWindow?.document;
       if ( ! doc ) continue;
-      el = doc.querySelector( `[data-block="${ clientId }"]` );
+      const el = doc.querySelector( `[data-block="${ clientId }"]` );
       if ( el ) return el;
     } catch (e) {
       // ignore
     }
   }
+  // Repli: document parent
+  const el = document.querySelector( `[data-block="${ clientId }"]` );
+  if ( el ) return el;
   return null;
 };
 
@@ -256,6 +256,23 @@ let lastActiveIds = new Set();
 const attachedIframes = new WeakSet();
 const frameSubscriptions = new WeakMap();
 
+const whenStoreReady = ( w, cb ) => {
+  let tries = 0;
+  const maxTries = 200; // ~10s à 50ms
+  const tick = () => {
+    try {
+      if ( w && w.wp && w.wp.data && w.wp.data.select && w.wp.data.subscribe ) {
+        cb();
+        return;
+      }
+    } catch (e) {}
+    if ( tries++ < maxTries ) {
+      setTimeout( tick, 50 );
+    }
+  };
+  tick();
+};
+
 const setupFrameStore = ( w ) => {
   if ( ! w || ! w.wp || ! w.wp.data || ! w.wp.data.select || ! w.wp.data.subscribe ) return;
   if ( frameSubscriptions.has( w ) ) return; // déjà attaché
@@ -286,6 +303,25 @@ const setupFrameStore = ( w ) => {
     }
   } );
   frameSubscriptions.set( w, unsubscribe );
+  // Passe initiale immédiate
+  try {
+    const blocks = w.wp.data.select( 'core/block-editor' ).getBlocks();
+    if ( Array.isArray( blocks ) ) {
+      const all = flattenBlocks( blocks );
+      const apt = all.filter( ( b ) => b?.name === 'core/post-template' );
+      const activeIds = new Set( apt.map( ( b ) => b.clientId ) );
+      apt.forEach( ( b ) => {
+        ensureObserver( b.clientId );
+        applySlice( b.clientId );
+        prevAttrs.set( b.clientId, {
+          s: parseInt( b.attributes?.aptStartFrom || 0, 10 ),
+          c: parseInt( b.attributes?.aptShowCount || 0, 10 ),
+          k: parseInt( b.attributes?.aptSkipLast || 0, 10 ),
+        } );
+      } );
+      lastActiveIds = new Set( activeIds );
+    }
+  } catch (e) {/* noop */}
 };
 
 const remountAllObservers = () => {
@@ -305,35 +341,16 @@ const attachCanvasListeners = () => {
     if ( attachedIframes.has( fr ) ) return;
     attachedIframes.add( fr );
     fr.addEventListener( 'load', () => {
-      // Le canvas a rechargé: détecte les blocs dans le store du canvas et (ré)applique
+      // Le canvas a rechargé: (ré)abonne et passe initiale lorsque le store est prêt
       const w = fr.contentWindow;
-      try {
-        if ( w && w.wp && w.wp.data && w.wp.data.select ) {
-          const blocks = w.wp.data.select( 'core/block-editor' ).getBlocks();
-          const all = flattenBlocks( blocks );
-          const apt = all.filter( ( b ) => b?.name === 'core/post-template' );
-          lastActiveIds = new Set( apt.map( ( b ) => b.clientId ) );
-          apt.forEach( ( b ) => {
-            ensureObserver( b.clientId );
-            applySlice( b.clientId );
-            prevAttrs.set( b.clientId, {
-              s: parseInt( b.attributes?.aptStartFrom || 0, 10 ),
-              c: parseInt( b.attributes?.aptShowCount || 0, 10 ),
-              k: parseInt( b.attributes?.aptSkipLast || 0, 10 ),
-            } );
-          } );
-          // Et s'abonner pour capter les insertions/changements sans reload
-          setupFrameStore( w );
-        } else {
-          // Repli: remonte les observateurs existants
-          remountAllObservers();
-        }
-      } catch (e) {
-        remountAllObservers();
-      }
+      whenStoreReady( w, () => setupFrameStore( w ) );
     } );
-    // Essaye d'attacher immédiatement si l'iframe est déjà prête
-    try { if ( fr.contentWindow ) setupFrameStore( fr.contentWindow ); } catch (e) {}
+    // Essaye d'attacher immédiatement si l'iframe est déjà prête + passe initiale, sinon attend que le store existe
+    try {
+      if ( fr.contentWindow ) {
+        whenStoreReady( fr.contentWindow, () => setupFrameStore( fr.contentWindow ) );
+      }
+    } catch (e) {}
   } );
 };
 
@@ -347,12 +364,16 @@ try {
 // Premier passage
 attachCanvasListeners();
 
-// Global subscription to block-editor store to mount/refresh observers
+// Global subscription (hors FSE) pour monter/rafraîchir les observateurs
 subscribe( () => {
   const blocks = select( 'core/block-editor' ).getBlocks();
   if ( ! Array.isArray( blocks ) ) return;
   const allBlocks = flattenBlocks( blocks );
   const aptBlocks = allBlocks.filter( ( b ) => b?.name === 'core/post-template' );
+  if ( aptBlocks.length === 0 ) {
+    // En FSE, ce store parent retourne souvent 0 éléments; ne pas nettoyer dans ce cas
+    return;
+  }
   const activeIds = new Set( aptBlocks.map( ( b ) => b.clientId ) );
 
   // Ensure observers for current APT blocks
@@ -375,6 +396,19 @@ subscribe( () => {
   // Mémorise les IDs actifs courants pour remount sur reload de canvas
   lastActiveIds = new Set( activeIds );
 } );
+
+// Passe initiale pour l’éditeur hors FSE (post/page editor)
+try {
+  const blocks = select( 'core/block-editor' ).getBlocks();
+  if ( Array.isArray( blocks ) && blocks.length ) {
+    const all = flattenBlocks( blocks );
+    const apt = all.filter( ( b ) => b?.name === 'core/post-template' );
+    apt.forEach( ( b ) => {
+      ensureObserver( b.clientId );
+      applySlice( b.clientId );
+    } );
+  }
+} catch (e) { /* noop */ }
 
 // 2) Add Inspector controls to core/post-template
 /**
