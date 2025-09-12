@@ -79,35 +79,58 @@ const withAPTControls = createHigherOrderComponent( ( BlockEdit ) => {
           dbg( 'root not found for', clientId );
           return;
         }
-        // Compute indices (1-based UI -> 0-based index)
+        // Remove any previous CSS-based approach (older versions)
+        const doc = root.ownerDocument || document;
+        const legacyStyle = doc.getElementById( `apt-style-${ clientId }` );
+        if ( legacyStyle ) legacyStyle.remove();
+
+        // Find the preview list element for this block.
+        const listEl =
+          ( root.matches && root.matches( 'ul.wp-block-post-template, ol.wp-block-post-template' )
+            ? root
+            : root.querySelector( 'ul.wp-block-post-template, ol.wp-block-post-template' ) );
+
+        if ( ! listEl ) {
+          dbg( 'list not found under root', clientId );
+          return;
+        }
+
+        // Gather direct LI children for accurate ordering.
+        const allLis = Array.from( listEl.children ).filter( ( el ) => el.tagName === 'LI' );
+
+        // First, clear only our own previous hides (preserve core/editor hidden state).
+        allLis.forEach( ( el ) => {
+          if ( el.dataset && el.dataset.aptHidden === '1' ) {
+            el.style.display = '';
+            delete el.dataset.aptHidden;
+          }
+        } );
+
+        // Consider only currently visible LIs (core may hide duplicates in preview).
+        const visibleLis = allLis.filter( ( el ) => {
+          const cs = ( el.ownerDocument || document ).defaultView.getComputedStyle( el );
+          return cs && cs.display !== 'none';
+        } );
+
+        const total = visibleLis.length;
+        dbg( 'visible items', total, { s, c, k } );
+        if ( total === 0 ) return;
+
+        // Compute indices (1-based UI -> 0-based index) on the visible list.
         const startIndex = Math.max( 0, parseInt( s || 1, 10 ) - 1 );
         const showCount = Math.max( 0, parseInt( c || 0, 10 ) );
         const skipLast = Math.max( 0, parseInt( k || 0, 10 ) );
-        // Generate CSS rules to hide items precisely within this block only
-        const doc = root.ownerDocument || document;
-        const styleId = `apt-style-${ clientId }`;
-        let styleEl = doc.getElementById( styleId );
-        if ( ! styleEl ) {
-          styleEl = doc.createElement( 'style' );
-          styleEl.id = styleId;
-          doc.head.appendChild( styleEl );
-        }
-        const scopeUl = `[data-block=\"${ clientId }\"] ul.wp-block-post-template > li`;
-        const scopeOl = `[data-block=\"${ clientId }\"] ol.wp-block-post-template > li`;
-        const scopes = `${ scopeUl }, ${ scopeOl }`;
-        const rules = [];
-        if ( startIndex > 0 ) {
-          rules.push( `${ scopes }:nth-child(-n+${ startIndex }){display:none !important;}` );
-        }
-        if ( showCount > 0 ) {
-          const beyond = startIndex + showCount + 1; // CSS nth-child is 1-based
-          rules.push( `${ scopes }:nth-child(n+${ beyond }){display:none !important;}` );
-        }
-        if ( skipLast > 0 ) {
-          rules.push( `${ scopes }:nth-last-child(-n+${ skipLast }){display:none !important;}` );
-        }
-        styleEl.textContent = rules.join( '\n' );
-        dbg( 'css rules', styleEl.textContent );
+        const endCap = Math.max( 0, total - skipLast );
+        const endIndex = showCount > 0 ? Math.min( startIndex + showCount, endCap ) : endCap; // exclusive
+        dbg( 'calc', { startIndex, endIndex, endCap, total } );
+
+        // Hide out-of-range on the visible subset only; tag so we can revert later.
+        visibleLis.forEach( ( el, i ) => {
+          if ( i < startIndex || i >= endIndex ) {
+            el.style.display = 'none';
+            if ( el.dataset ) el.dataset.aptHidden = '1';
+          }
+        } );
       };
 
       let raf = 0;
