@@ -79,15 +79,25 @@ const withAPTControls = createHigherOrderComponent( ( BlockEdit ) => {
           dbg( 'root not found for', clientId );
           return;
         }
-        const container = root.querySelector( '.wp-block-post-template' ) || root;
-        let items = Array.from( container.querySelectorAll( '.wp-block-post' ) );
-        if ( items.length === 0 ) {
-          items = Array.from( container.querySelectorAll( 'li' ) );
+        // Prefer a list element like the real front render to avoid catching editor inner template markup.
+        const list = root.querySelector( 'ul.wp-block-post-template, ol.wp-block-post-template' );
+        let items = [];
+        if ( list ) {
+          // Only direct LI children are considered preview items
+          items = Array.from( list.querySelectorAll( ':scope > li' ) );
+        } else {
+          // Fallback: look for post items but restrict to the first post-template container to avoid duplicates
+          const container = root.querySelector( '.wp-block-post-template' ) || root;
+          items = Array.from( container.querySelectorAll( '.wp-block-post' ) );
+          if ( items.length === 0 ) {
+            items = Array.from( container.querySelectorAll( 'li' ) );
+          }
         }
         const total = items.length;
         dbg( 'items total', total, { s, c, k } );
         items.forEach( ( el ) => el.style.removeProperty( 'display' ) );
         if ( total === 0 ) return;
+        // In editor, the preview list mirrors front rendering; keep 1-based -> 0-based conversion.
         const startIndex = Math.max( 0, parseInt( s || 1, 10 ) - 1 );
         const showCount = Math.max( 0, parseInt( c || 0, 10 ) );
         const skipLast = Math.max( 0, parseInt( k || 0, 10 ) );
