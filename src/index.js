@@ -44,21 +44,48 @@ const withAPTControls = createHigherOrderComponent( ( BlockEdit ) => {
       const { clientId } = props;
       if ( ! clientId ) return;
 
+      const dbg = ( ...args ) => {
+        if ( window.APT_DEBUG ) {
+          // eslint-disable-next-line no-console
+          console.debug( '[APT]', ...args );
+        }
+      };
+
+      const findBlockElement = () => {
+        // Normal document first
+        let el = document.querySelector( `[data-block="${ clientId }"]` );
+        if ( el ) return el;
+        // Try canvas iframes (Site Editor / Editor iframe mode)
+        const frames = Array.from( document.querySelectorAll( 'iframe[name="editor-canvas"], .editor-canvas iframe, iframe.components-iframe__frame' ) );
+        for ( const fr of frames ) {
+          try {
+            const doc = fr.contentDocument || fr.contentWindow?.document;
+            if ( ! doc ) continue;
+            el = doc.querySelector( `[data-block="${ clientId }"]` );
+            if ( el ) return el;
+          } catch (e) {
+            // ignore
+          }
+        }
+        return null;
+      };
+
       const applySlice = () => {
         const block = select( 'core/block-editor' ).getBlock( clientId );
         if ( ! block ) return;
         const { aptStartFrom: s = 1, aptShowCount: c = 0, aptSkipLast: k = 0 } = block.attributes || {};
-        const root = document.querySelector( `[data-block="${ clientId }"]` );
-        if ( ! root ) return;
-        // Try to find the post-template container rendered in the editor
+        const root = findBlockElement();
+        if ( ! root ) {
+          dbg( 'root not found for', clientId );
+          return;
+        }
         const container = root.querySelector( '.wp-block-post-template' ) || root;
-        // Prefer elements with the class used for each post item
         let items = Array.from( container.querySelectorAll( '.wp-block-post' ) );
         if ( items.length === 0 ) {
-          // Fallback to LI children in case the editor renders a list
           items = Array.from( container.querySelectorAll( 'li' ) );
         }
         const total = items.length;
+        dbg( 'items total', total, { s, c, k } );
         items.forEach( ( el ) => el.style.removeProperty( 'display' ) );
         if ( total === 0 ) return;
         const startIndex = Math.max( 0, parseInt( s || 1, 10 ) - 1 );
@@ -66,8 +93,8 @@ const withAPTControls = createHigherOrderComponent( ( BlockEdit ) => {
         const skipLast = Math.max( 0, parseInt( k || 0, 10 ) );
         const endCap = Math.max( 0, total - skipLast );
         const endIndex = showCount > 0 ? Math.min( startIndex + showCount, endCap ) : endCap; // exclusive
+        dbg( 'calc', { startIndex, endIndex, endCap, total } );
         if ( startIndex >= endIndex ) {
-          // Hide all
           items.forEach( ( el ) => ( el.style.display = 'none' ) );
           return;
         }
@@ -85,14 +112,24 @@ const withAPTControls = createHigherOrderComponent( ( BlockEdit ) => {
       };
       const unsubscribe = subscribe( run );
       // Observe DOM changes within the block to re-apply when preview updates
-      const rootEl = () => document.querySelector( `[data-block="${ clientId }"]` );
+      const rootEl = () => findBlockElement();
       const observer = new MutationObserver( () => run() );
       const mountObserver = () => {
         const el = rootEl();
-        if ( el ) observer.observe( el, { childList: true, subtree: true } );
+        if ( el ) {
+          try {
+            observer.observe( el, { childList: true, subtree: true } );
+            dbg( 'observer mounted on', clientId );
+          } catch (e) {
+            dbg( 'observer error', e );
+          }
+        } else {
+          dbg( 'block el not found on mount' );
+        }
       };
       mountObserver();
       // Initial run
+      dbg( 'effect mounted', clientId );
       run();
       return () => {
         if ( unsubscribe ) unsubscribe();

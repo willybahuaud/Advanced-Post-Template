@@ -36,6 +36,14 @@ function wabeo_apt_enqueue_editor_assets() {
 }
 add_action( 'enqueue_block_editor_assets', 'wabeo_apt_enqueue_editor_assets' );
 
+// Fallback: ensure the script also loads in Site Editor (some setups).
+function wabeo_apt_admin_enqueue( $hook ) {
+    if ( 'site-editor.php' === $hook ) {
+        wabeo_apt_enqueue_editor_assets();
+    }
+}
+add_action( 'admin_enqueue_scripts', 'wabeo_apt_admin_enqueue' );
+
 /**
  * Add custom attributes to core/post-template and override render callback to slice results.
  */
