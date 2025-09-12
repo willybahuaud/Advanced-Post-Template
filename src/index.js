@@ -1,3 +1,5 @@
+// Étend core/post-template avec des réglages de tranche
+// et applique la même découpe dans l’éditeur (aperçu FSE fidèle).
 import { __ } from '@wordpress/i18n';
 import { addFilter } from '@wordpress/hooks';
 import { createHigherOrderComponent } from '@wordpress/compose';
@@ -6,11 +8,12 @@ import { useEffect } from '@wordpress/element';
 import { select, subscribe } from '@wordpress/data';
 import { PanelBody, NumberControl as StableNumberControl, __experimentalNumberControl as ExperimentalNumberControl } from '@wordpress/components';
 
-// NumberControl fallback to support WP versions where it's still experimental
+// NumberControl fallback selon la version de WordPress
 const NumberControl = StableNumberControl || ExperimentalNumberControl;
 
 const ATTRS = {
-  aptStartFrom: { type: 'number', default: 0 },
+  // 1-based côté UI pour rester aligné avec l’expérience core
+  aptStartFrom: { type: 'number', default: 1 },
   aptShowCount: { type: 'number', default: 0 },
   aptSkipLast: { type: 'number', default: 0 },
 };
@@ -32,6 +35,11 @@ addFilter(
 );
 
 // 2) Add Inspector controls to core/post-template
+/**
+ * Ajoute un panneau de réglages et applique le slicing dans l’éditeur.
+ * @param {import('@wordpress/element').ComponentType<any>} BlockEdit
+ * @returns {import('@wordpress/element').ComponentType<any>}
+ */
 const withAPTControls = createHigherOrderComponent( ( BlockEdit ) => {
   return ( props ) => {
     if ( props.name !== 'core/post-template' ) {
@@ -40,11 +48,15 @@ const withAPTControls = createHigherOrderComponent( ( BlockEdit ) => {
     const { attributes, setAttributes } = props;
     const { aptStartFrom, aptShowCount, aptSkipLast } = attributes;
 
-    // Editor-only DOM slicing (mirror front behavior in the editor preview)
+    // Editor-only DOM slicing (miroir du front dans l’aperçu éditeur)
     useEffect( () => {
       const { clientId } = props;
       if ( ! clientId ) return;
 
+      /**
+       * Trouve l’élément DOM du bloc, dans le document ou dans l’iframe du canvas.
+       * @returns {HTMLElement|null}
+       */
       const findBlockElement = () => {
         // Normal document first
         let el = document.querySelector( `[data-block="${ clientId }"]` );
@@ -64,11 +76,44 @@ const withAPTControls = createHigherOrderComponent( ( BlockEdit ) => {
         return null;
       };
 
-      // Apply slice to the editor preview
+      /**
+       * Trouve la liste de prévisualisation (ul/ol.wp-block-post-template) pour ce bloc.
+       * @param {HTMLElement} root
+       * @returns {HTMLUListElement|HTMLOListElement|null}
+       */
+      const findListElement = ( root ) => {
+        if ( ! root ) return null;
+        if ( root.matches && root.matches( 'ul.wp-block-post-template, ol.wp-block-post-template' ) ) {
+          return root;
+        }
+        return root.querySelector( 'ul.wp-block-post-template, ol.wp-block-post-template' );
+      };
+
+      /**
+       * Retourne les LI visibles (enfants directs) et retire seulement nos masquages précédents.
+       * @param {HTMLElement} listEl
+       * @returns {HTMLElement[]}
+       */
+      const getVisibleItems = ( listEl ) => {
+        if ( ! listEl ) return [];
+        const allLis = Array.from( listEl.children ).filter( ( el ) => el.tagName === 'LI' );
+        allLis.forEach( ( el ) => {
+          if ( el.dataset && el.dataset.aptHidden === '1' ) {
+            el.style.display = '';
+            delete el.dataset.aptHidden;
+          }
+        } );
+        return allLis.filter( ( el ) => {
+          const cs = ( el.ownerDocument || document ).defaultView.getComputedStyle( el );
+          return cs && cs.display !== 'none';
+        } );
+      };
+
+      /** Applique la découpe à l’aperçu éditeur (masque les LI hors plage). */
       const applySlice = () => {
         const block = select( 'core/block-editor' ).getBlock( clientId );
         if ( ! block ) return;
-        const { aptStartFrom: s = 0, aptShowCount: c = 0, aptSkipLast: k = 0 } = block.attributes || {};
+        const { aptStartFrom: s = 1, aptShowCount: c = 0, aptSkipLast: k = 0 } = block.attributes || {};
         const root = findBlockElement();
         if ( ! root ) return;
         // Remove any previous CSS-based approach (older versions)
@@ -76,36 +121,18 @@ const withAPTControls = createHigherOrderComponent( ( BlockEdit ) => {
         const legacyStyle = doc.getElementById( `apt-style-${ clientId }` );
         if ( legacyStyle ) legacyStyle.remove();
 
-        // Find the preview list element for this block.
-        const listEl =
-          ( root.matches && root.matches( 'ul.wp-block-post-template, ol.wp-block-post-template' )
-            ? root
-            : root.querySelector( 'ul.wp-block-post-template, ol.wp-block-post-template' ) );
+        const listEl = findListElement( root );
 
         if ( ! listEl ) return;
 
-        // Gather direct LI children for accurate ordering.
-        const allLis = Array.from( listEl.children ).filter( ( el ) => el.tagName === 'LI' );
-
-        // First, clear only our own previous hides (preserve core/editor hidden state).
-        allLis.forEach( ( el ) => {
-          if ( el.dataset && el.dataset.aptHidden === '1' ) {
-            el.style.display = '';
-            delete el.dataset.aptHidden;
-          }
-        } );
-
-        // Consider only currently visible LIs (core/editor may hide duplicates in preview).
-        const visibleLis = allLis.filter( ( el ) => {
-          const cs = ( el.ownerDocument || document ).defaultView.getComputedStyle( el );
-          return cs && cs.display !== 'none';
-        } );
+        const visibleLis = getVisibleItems( listEl );
 
         const total = visibleLis.length;
         if ( total === 0 ) return;
 
-        // Compute indices (1-based UI -> 0-based index) on the visible list.
-        const startIndex = Math.max( 0, parseInt( s || 0, 10 ) );
+        // Compute indices (UI en base 1 -> interne base 0) sur la liste visible.
+        // parseInt(..., 10) force la base décimale (évite les cas bizarres de chaînes).
+        const startIndex = Math.max( 0, parseInt( s || 1, 10 ) - 1 );
         const showCount = Math.max( 0, parseInt( c || 0, 10 ) );
         const skipLast = Math.max( 0, parseInt( k || 0, 10 ) );
         const endCap = Math.max( 0, total - skipLast );
@@ -121,22 +148,22 @@ const withAPTControls = createHigherOrderComponent( ( BlockEdit ) => {
       };
 
       let raf = 0;
+      /** Déclenche sans bloquer l’UI */
       const run = () => {
         if ( raf ) cancelAnimationFrame( raf );
         raf = requestAnimationFrame( applySlice );
       };
       const unsubscribe = subscribe( run );
-      // Observe DOM changes within the block to re-apply when preview updates
-      const rootEl = () => findBlockElement();
+      // Observe la liste si possible (moins de bruit), sinon le bloc root
       const observer = new MutationObserver( () => run() );
       const mountObserver = () => {
-        const el = rootEl();
-        if ( el ) {
-          try {
-            observer.observe( el, { childList: true, subtree: true } );
-          } catch (e) {
-            // ignore
-          }
+        const rootEl = findBlockElement();
+        if ( ! rootEl ) return;
+        const target = findListElement( rootEl ) || rootEl;
+        try {
+          observer.observe( target, { childList: true, subtree: true } );
+        } catch (e) {
+          // ignore
         }
       };
       mountObserver();

@@ -1,6 +1,6 @@
 # Advanced Post Template (WordPress)
 
-Extension du bloc core « Post Template » pour découper l’affichage d’une Query Loop.
+Une petite extension, très ciblée, du bloc core « Post Template » pour découper l’affichage d’une Query Loop, sans ré‑inventer la roue.
 
 - Démarrer à partir du Xème post (1 = premier)
 - Afficher ensuite X posts (0 = tout ce qui reste)
@@ -13,15 +13,15 @@ Auteur : [Willy Bahuaud](https://wabeo.fr)
 1. Copier le dossier du plugin dans `wp-content/plugins/advanced-post-template` (c’est déjà le cas dans votre setup Local).
 2. Activer le plugin depuis l’admin WordPress.
 
-Le plugin ajoute des attributs au bloc `core/post-template` et filtre son rendu côté serveur.
+Le plugin ajoute des attributs au bloc `core/post-template` et filtre son rendu côté serveur (front). Côté éditeur (FSE), j’applique un masquage non destructif pour que la prévisualisation colle au rendu réel.
 
 ## Utilisation
 
-Dans l’éditeur :
+Dans l’éditeur :
 
 1. Insérez un bloc « Query Loop ».
-2. Remplacez le « Post Template » par « Advanced Post Template ».
-3. Réglez dans la sidebar :
+2. Sélectionnez le bloc « Post Template » à l’intérieur.
+3. Dans la sidebar, un panneau « Affichage – Tranche » apparaît :
    - « Démarrer à partir du Xème post » (1 = premier)
    - « Afficher X posts » (0 = autant que possible)
    - « Ignorer X posts à la fin »
@@ -33,23 +33,24 @@ Exemples d’agencements sur une même page :
 
 ## Détails techniques
 
-- Le bloc suit la structure et les classes du `core/post-template` pour rester compatible avec les styles de thème.
+- On ne remplace rien : on étend le `core/post-template`, donc vos styles de thème continuent de s’appliquer.
 - Le rendu côté serveur découpe la liste courante de la Query Loop par index (base 0 en interne).
 - Pagination : si la Query Loop pagine, la découpe s’applique au « lot » de la page courante.
+- Éditeur : l’aperçu masque uniquement les éléments « hors tranche » (sans toucher au contenu), et ne révèle jamais ce que l’éditeur masque déjà. Chaque bloc est ciblé précisément, même avec plusieurs Query Loop à la suite.
 
-### Attributs
+### Attributs (ajoutés au bloc core/post-template)
 
-- `startFrom` (number, défaut 1) : point de départ (1‑based côté UI).
-- `showCount` (number, défaut 0) : nombre d’éléments à afficher (0 = pas de limite jusqu’à la coupe de fin).
-- `skipLast` (number, défaut 0) : nombre d’éléments ignorés en fin de lot.
+- `aptStartFrom` (number, défaut 1) : point de départ (1‑based côté UI).
+- `aptShowCount` (number, défaut 0) : nombre d’éléments à afficher (0 = pas de limite jusqu’à la coupe de fin).
+- `aptSkipLast` (number, défaut 0) : nombre d’éléments ignorés en fin de lot.
 
 ## Développement
 
-Le plugin utilise `@wordpress/scripts` pour compiler les scripts du bloc.
+Le plugin utilise `@wordpress/scripts` pour compiler le JS d’extension.
 
-- PHP : `advanced-post-template.php` (enregistrement + render_callback)
-- Sources JS : `src/index.js` (extension du bloc core)
-- Build JS : `build/index.js` (chargé automatiquement dans l’éditeur)
+- PHP : `advanced-post-template.php` (enregistrement + override du render core pour la tranche)
+- JS : `src/index.js` (HOC en JSX, ajoute le panneau et l’aperçu découpé)
+- Build : `build/index.js` (chargé automatiquement dans l’éditeur)
 
 Commandes :
 
@@ -59,7 +60,7 @@ npm run start   # watcher de développement
 npm run build   # build de production
 ```
 
-Astuce : si vous ne souhaitez pas builder, un script de secours existe encore dans `blocks/advanced-post-template/index.js`, mais `block.json` pointe désormais vers la version compilée.
+Petit rappel : on n’ajoute pas de nouveau bloc, on ne casse pas vos templates. On étend le natif, proprement.
 
 ## Compatibilité
 
