@@ -88,13 +88,11 @@ function wabeo_render_core_post_template_sliced( $attributes, $content, $block )
 
     $use_global_query = ( isset( $block->context['query']['inherit'] ) && $block->context['query']['inherit'] );
     if ( $use_global_query ) {
+        // Always clone the global query to avoid advancing the main loop pointer
+        // when multiple post-template blocks are present on the same page.
         global $wp_query;
-        if ( in_the_loop() ) {
-            $query = clone $wp_query;
-            $query->rewind_posts();
-        } else {
-            $query = $wp_query;
-        }
+        $query = clone $wp_query;
+        $query->rewind_posts();
     } else {
         if ( ! function_exists( 'build_query_vars_from_query_block' ) ) {
             return '';
