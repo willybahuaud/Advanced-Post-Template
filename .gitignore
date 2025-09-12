@@ -1,0 +1,25 @@
+# OS / Editors
+.DS_Store
+.idea/
+.vscode/
+
+# Node / JS
+node_modules/
+npm-debug.log*
+yarn-error.log*
+
+# PHP / Composer
+vendor/
+composer.lock
+
+# Archives / Dist
+*.zip
+*.tar
+*.tar.gz
+dist/
+
+# Misc
+*.log
+.env
+*.local
+
