@@ -95,7 +95,13 @@ const withAPTControls = createHigherOrderComponent( ( BlockEdit ) => {
         }
         const total = items.length;
         dbg( 'items total', total, { s, c, k } );
-        items.forEach( ( el ) => el.style.removeProperty( 'display' ) );
+        // Only revert our own previous hides; do not unhide nodes hidden by core/editor.
+        items.forEach( ( el ) => {
+          if ( el.dataset && el.dataset.aptHidden === '1' ) {
+            el.style.display = '';
+            delete el.dataset.aptHidden;
+          }
+        } );
         if ( total === 0 ) return;
         // In editor, the preview list mirrors front rendering; keep 1-based -> 0-based conversion.
         const startIndex = Math.max( 0, parseInt( s || 1, 10 ) - 1 );
@@ -105,12 +111,16 @@ const withAPTControls = createHigherOrderComponent( ( BlockEdit ) => {
         const endIndex = showCount > 0 ? Math.min( startIndex + showCount, endCap ) : endCap; // exclusive
         dbg( 'calc', { startIndex, endIndex, endCap, total } );
         if ( startIndex >= endIndex ) {
-          items.forEach( ( el ) => ( el.style.display = 'none' ) );
+          items.forEach( ( el ) => {
+            el.style.display = 'none';
+            if ( el.dataset ) el.dataset.aptHidden = '1';
+          } );
           return;
         }
         items.forEach( ( el, i ) => {
           if ( i < startIndex || i >= endIndex ) {
             el.style.display = 'none';
+            if ( el.dataset ) el.dataset.aptHidden = '1';
           }
         } );
       };
