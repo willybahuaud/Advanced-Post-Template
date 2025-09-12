@@ -79,50 +79,35 @@ const withAPTControls = createHigherOrderComponent( ( BlockEdit ) => {
           dbg( 'root not found for', clientId );
           return;
         }
-        // Prefer a list element like the real front render to avoid catching editor inner template markup.
-        const list = root.querySelector( 'ul.wp-block-post-template, ol.wp-block-post-template' );
-        let items = [];
-        if ( list ) {
-          // Only direct LI children are considered preview items
-          items = Array.from( list.querySelectorAll( ':scope > li' ) );
-        } else {
-          // Fallback: look for post items but restrict to the first post-template container to avoid duplicates
-          const container = root.querySelector( '.wp-block-post-template' ) || root;
-          items = Array.from( container.querySelectorAll( '.wp-block-post' ) );
-          if ( items.length === 0 ) {
-            items = Array.from( container.querySelectorAll( 'li' ) );
-          }
-        }
-        const total = items.length;
-        dbg( 'items total', total, { s, c, k } );
-        // Only revert our own previous hides; do not unhide nodes hidden by core/editor.
-        items.forEach( ( el ) => {
-          if ( el.dataset && el.dataset.aptHidden === '1' ) {
-            el.style.display = '';
-            delete el.dataset.aptHidden;
-          }
-        } );
-        if ( total === 0 ) return;
-        // In editor, the preview list mirrors front rendering; keep 1-based -> 0-based conversion.
+        // Compute indices (1-based UI -> 0-based index)
         const startIndex = Math.max( 0, parseInt( s || 1, 10 ) - 1 );
         const showCount = Math.max( 0, parseInt( c || 0, 10 ) );
         const skipLast = Math.max( 0, parseInt( k || 0, 10 ) );
-        const endCap = Math.max( 0, total - skipLast );
-        const endIndex = showCount > 0 ? Math.min( startIndex + showCount, endCap ) : endCap; // exclusive
-        dbg( 'calc', { startIndex, endIndex, endCap, total } );
-        if ( startIndex >= endIndex ) {
-          items.forEach( ( el ) => {
-            el.style.display = 'none';
-            if ( el.dataset ) el.dataset.aptHidden = '1';
-          } );
-          return;
+        // Generate CSS rules to hide items precisely within this block only
+        const doc = root.ownerDocument || document;
+        const styleId = `apt-style-${ clientId }`;
+        let styleEl = doc.getElementById( styleId );
+        if ( ! styleEl ) {
+          styleEl = doc.createElement( 'style' );
+          styleEl.id = styleId;
+          doc.head.appendChild( styleEl );
         }
-        items.forEach( ( el, i ) => {
-          if ( i < startIndex || i >= endIndex ) {
-            el.style.display = 'none';
-            if ( el.dataset ) el.dataset.aptHidden = '1';
-          }
-        } );
+        const scopeUl = `[data-block=\"${ clientId }\"] ul.wp-block-post-template > li`;
+        const scopeOl = `[data-block=\"${ clientId }\"] ol.wp-block-post-template > li`;
+        const scopes = `${ scopeUl }, ${ scopeOl }`;
+        const rules = [];
+        if ( startIndex > 0 ) {
+          rules.push( `${ scopes }:nth-child(-n+${ startIndex }){display:none !important;}` );
+        }
+        if ( showCount > 0 ) {
+          const beyond = startIndex + showCount + 1; // CSS nth-child is 1-based
+          rules.push( `${ scopes }:nth-child(n+${ beyond }){display:none !important;}` );
+        }
+        if ( skipLast > 0 ) {
+          rules.push( `${ scopes }:nth-last-child(-n+${ skipLast }){display:none !important;}` );
+        }
+        styleEl.textContent = rules.join( '\n' );
+        dbg( 'css rules', styleEl.textContent );
       };
 
       let raf = 0;
