@@ -10,7 +10,7 @@ import { PanelBody, NumberControl as StableNumberControl, __experimentalNumberCo
 const NumberControl = StableNumberControl || ExperimentalNumberControl;
 
 const ATTRS = {
-  aptStartFrom: { type: 'number', default: 1 },
+  aptStartFrom: { type: 'number', default: 0 },
   aptShowCount: { type: 'number', default: 0 },
   aptSkipLast: { type: 'number', default: 0 },
 };
@@ -68,7 +68,7 @@ const withAPTControls = createHigherOrderComponent( ( BlockEdit ) => {
       const applySlice = () => {
         const block = select( 'core/block-editor' ).getBlock( clientId );
         if ( ! block ) return;
-        const { aptStartFrom: s = 1, aptShowCount: c = 0, aptSkipLast: k = 0 } = block.attributes || {};
+        const { aptStartFrom: s = 0, aptShowCount: c = 0, aptSkipLast: k = 0 } = block.attributes || {};
         const root = findBlockElement();
         if ( ! root ) return;
         // Remove any previous CSS-based approach (older versions)
@@ -105,7 +105,7 @@ const withAPTControls = createHigherOrderComponent( ( BlockEdit ) => {
         if ( total === 0 ) return;
 
         // Compute indices (1-based UI -> 0-based index) on the visible list.
-        const startIndex = Math.max( 0, parseInt( s || 1, 10 ) - 1 );
+        const startIndex = Math.max( 0, parseInt( s || 0, 10 ) );
         const showCount = Math.max( 0, parseInt( c || 0, 10 ) );
         const skipLast = Math.max( 0, parseInt( k || 0, 10 ) );
         const endCap = Math.max( 0, total - skipLast );
@@ -152,21 +152,21 @@ const withAPTControls = createHigherOrderComponent( ( BlockEdit ) => {
       <>
         <BlockEdit { ...props } />
         <InspectorControls>
-          <PanelBody title={ __( 'Affichage – Tranche', 'advanced-post-template' ) } initialOpen>
+          <PanelBody title={ __( 'Tronquer l’affichage', 'advanced-post-template' ) } initialOpen>
             <NumberControl
-              label={ __( 'Démarrer à partir du Xème post (1 = premier)', 'advanced-post-template' ) }
-              min={ 1 }
+              label={ __( 'Tronquer au début', 'advanced-post-template' ) }
+              min={ 0 }
               value={ aptStartFrom }
-              onChange={ ( val ) => setAttributes( { aptStartFrom: parseInt( val || 1, 10 ) || 1 } ) }
+              onChange={ ( val ) => setAttributes( { aptStartFrom: parseInt( val || 0, 10 ) || 0 } ) }
             />
             <NumberControl
-              label={ __( 'Afficher X posts (0 = tous possibles)', 'advanced-post-template' ) }
+              label={ __( 'Maximum à afficher (0 = tous)', 'advanced-post-template' ) }
               min={ 0 }
               value={ aptShowCount }
               onChange={ ( val ) => setAttributes( { aptShowCount: Math.max( 0, parseInt( val || 0, 10 ) || 0 ) } ) }
             />
             <NumberControl
-              label={ __( 'Ignorer X posts à la fin', 'advanced-post-template' ) }
+              label={ __( 'Tronquer à la fin', 'advanced-post-template' ) }
               min={ 0 }
               value={ aptSkipLast }
               onChange={ ( val ) => setAttributes( { aptSkipLast: Math.max( 0, parseInt( val || 0, 10 ) || 0 ) } ) }

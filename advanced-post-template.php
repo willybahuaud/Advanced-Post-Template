@@ -54,7 +54,7 @@ function wabeo_apt_register_core_post_template_attrs( $args, $name ) {
     if ( ! isset( $args['attributes'] ) || ! is_array( $args['attributes'] ) ) {
         $args['attributes'] = array();
     }
-    $args['attributes']['aptStartFrom'] = array( 'type' => 'number', 'default' => 1 );
+    $args['attributes']['aptStartFrom'] = array( 'type' => 'number', 'default' => 0 );
     $args['attributes']['aptShowCount'] = array( 'type' => 'number', 'default' => 0 );
     $args['attributes']['aptSkipLast']  = array( 'type' => 'number', 'default' => 0 );
 
@@ -74,7 +74,7 @@ add_filter( 'register_block_type_args', 'wabeo_apt_register_core_post_template_a
 function wabeo_render_core_post_template_sliced( $attributes, $content, $block ) {
     // If no slicing requested, defer to core renderer when available.
     $has_slicing = (
-        ( isset( $attributes['aptStartFrom'] ) && (int) $attributes['aptStartFrom'] !== 1 ) ||
+        ( isset( $attributes['aptStartFrom'] ) && (int) $attributes['aptStartFrom'] !== 0 ) ||
         ( isset( $attributes['aptShowCount'] ) && (int) $attributes['aptShowCount'] !== 0 ) ||
         ( isset( $attributes['aptSkipLast'] )  && (int) $attributes['aptSkipLast']  !== 0 )
     );
@@ -114,7 +114,7 @@ function wabeo_render_core_post_template_sliced( $attributes, $content, $block )
 
     // Compute slicing indices (convert 1-based UI to 0-based index).
     $total_posts = (int) $query->post_count;
-    $start_from  = isset( $attributes['aptStartFrom'] ) ? max( 0, (int) $attributes['aptStartFrom'] - 1 ) : 0;
+    $start_from  = isset( $attributes['aptStartFrom'] ) ? max( 0, (int) $attributes['aptStartFrom'] ) : 0;
     $show_count  = isset( $attributes['aptShowCount'] ) ? (int) $attributes['aptShowCount'] : 0; // 0 = all
     $skip_last   = isset( $attributes['aptSkipLast'] ) ? max( 0, (int) $attributes['aptSkipLast'] ) : 0;
 
