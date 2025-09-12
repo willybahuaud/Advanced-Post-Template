@@ -2,6 +2,8 @@ import { __ } from '@wordpress/i18n';
 import { addFilter } from '@wordpress/hooks';
 import { createHigherOrderComponent } from '@wordpress/compose';
 import { InspectorControls } from '@wordpress/block-editor';
+import { useEffect } from '@wordpress/element';
+import { select, subscribe } from '@wordpress/data';
 import { PanelBody, NumberControl as StableNumberControl, __experimentalNumberControl as ExperimentalNumberControl } from '@wordpress/components';
 
 const NumberControl = StableNumberControl || ExperimentalNumberControl;
@@ -36,6 +38,54 @@ const withAPTControls = createHigherOrderComponent( ( BlockEdit ) => {
     }
     const { attributes, setAttributes } = props;
     const { aptStartFrom, aptShowCount, aptSkipLast } = attributes;
+
+    // Editor-only DOM slicing (mirror front behavior in the editor preview)
+    useEffect( () => {
+      const { clientId } = props;
+      if ( ! clientId ) return;
+
+      const applySlice = () => {
+        const block = select( 'core/block-editor' ).getBlock( clientId );
+        if ( ! block ) return;
+        const { aptStartFrom: s = 1, aptShowCount: c = 0, aptSkipLast: k = 0 } = block.attributes || {};
+        const root = document.querySelector( `[data-block="${ clientId }"]` );
+        if ( ! root ) return;
+        const ul = root.querySelector( 'ul.wp-block-post-template' );
+        if ( ! ul ) return;
+        const items = Array.from( ul.children ).filter( ( el ) => el && el.tagName === 'LI' );
+        const total = items.length;
+        items.forEach( ( el ) => el.style.removeProperty( 'display' ) );
+        if ( total === 0 ) return;
+        const startIndex = Math.max( 0, parseInt( s || 1, 10 ) - 1 );
+        const showCount = Math.max( 0, parseInt( c || 0, 10 ) );
+        const skipLast = Math.max( 0, parseInt( k || 0, 10 ) );
+        const endCap = Math.max( 0, total - skipLast );
+        const endIndex = showCount > 0 ? Math.min( startIndex + showCount, endCap ) : endCap; // exclusive
+        if ( startIndex >= endIndex ) {
+          // Hide all
+          items.forEach( ( el ) => ( el.style.display = 'none' ) );
+          return;
+        }
+        items.forEach( ( el, i ) => {
+          if ( i < startIndex || i >= endIndex ) {
+            el.style.display = 'none';
+          }
+        } );
+      };
+
+      let raf = 0;
+      const run = () => {
+        if ( raf ) cancelAnimationFrame( raf );
+        raf = requestAnimationFrame( applySlice );
+      };
+      const unsubscribe = subscribe( run );
+      // Initial run
+      run();
+      return () => {
+        if ( unsubscribe ) unsubscribe();
+        if ( raf ) cancelAnimationFrame( raf );
+      };
+    }, [ props.clientId ] );
     return (
       <>
         <BlockEdit { ...props } />
@@ -67,4 +117,3 @@ const withAPTControls = createHigherOrderComponent( ( BlockEdit ) => {
 }, 'withAPTControls' );
 
 addFilter( 'editor.BlockEdit', 'wabeo/apt-controls', withAPTControls );
-
