@@ -1,16 +1,17 @@
 # Advanced Post Template (WordPress)
 
 Une petite extension, très ciblée, du bloc core « Post Template » pour découper l’affichage d’une Query Loop, sans ré‑inventer la roue.
+L'idée c'est, pour une WP Query donnée, de commencer la boucle quelque part dans un gabarit… et la finir ailleurs !
 
-- Ignorer X posts au début
+- Ignorer les X posts au début
 - Afficher ensuite X posts (0 = tout ce qui reste)
-- Ignorer X posts à la fin
+- Ignorer les X posts à la fin
 
 Auteur : [Willy Bahuaud](https://wabeo.fr)
 
 ## Installation
 
-1. Copier le dossier du plugin dans `wp-content/plugins/advanced-post-template` (c’est déjà le cas dans votre setup Local).
+1. Copier le dossier du plugin dans `wp-content/plugins/advanced-post-template`
 2. Activer le plugin depuis l’admin WordPress.
 
 Le plugin ajoute des attributs au bloc `core/post-template` et filtre son rendu côté serveur (front). Côté éditeur (FSE), j’applique un masquage non destructif pour que la prévisualisation colle au rendu réel.
