@@ -1,7 +1,7 @@
 <?php
 /**
  * Plugin Name:       Advanced Post Template
- * Description:       Variante du bloc Post Template permettant de découper l'affichage d'une Query Loop (départ, nombre, éléments à ignorer en fin).
+ * Description:       Ajoute des réglages de tranche (départ, nombre, éléments à ignorer en fin) au bloc natif Post Template et filtre son rendu en front.
  * Author:            Willy Bahuaud
  * Author URI:        https://wabeo.fr
  * Version:           0.1.0
@@ -16,23 +16,66 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 /**
- * Render callback for the Advanced Post Template block.
- *
- * Attributes:
- * - startFrom (int, 1-based): commencer à partir du Xème post.
- * - showCount (int): afficher X posts (0 ou vide = autant que possible).
- * - skipLast (int): ignorer X posts à la fin.
- *
- * Le rendu suit le bloc core/post-template, mais ne rend qu'une tranche des résultats.
- *
- * @param array    $attributes
- * @param string   $content
- * @param WP_Block $block
- * @return string
+ * Enqueue editor script to extend the native core/post-template block.
  */
-function wabeo_render_block_advanced_post_template( $attributes, $content, $block ) {
+function wabeo_apt_enqueue_editor_assets() {
+    $asset_file = __DIR__ . '/build/index.asset.php';
+    if ( ! file_exists( $asset_file ) ) {
+        return;
+    }
+    $asset = include $asset_file;
+    wp_register_script(
+        'wabeo-apt-editor',
+        plugins_url( 'build/index.js', __FILE__ ),
+        isset( $asset['dependencies'] ) ? $asset['dependencies'] : array( 'wp-blocks', 'wp-element', 'wp-components', 'wp-i18n', 'wp-hooks', 'wp-block-editor' ),
+        isset( $asset['version'] ) ? $asset['version'] : filemtime( __DIR__ . '/build/index.js' ),
+        true
+    );
+    wp_set_script_translations( 'wabeo-apt-editor', 'advanced-post-template' );
+    wp_enqueue_script( 'wabeo-apt-editor' );
+}
+add_action( 'enqueue_block_editor_assets', 'wabeo_apt_enqueue_editor_assets' );
+
+/**
+ * Add custom attributes to core/post-template and override render callback to slice results.
+ */
+function wabeo_apt_register_core_post_template_attrs( $args, $name ) {
+    if ( 'core/post-template' !== $name ) {
+        return $args;
+    }
+    if ( ! isset( $args['attributes'] ) || ! is_array( $args['attributes'] ) ) {
+        $args['attributes'] = array();
+    }
+    $args['attributes']['aptStartFrom'] = array( 'type' => 'number', 'default' => 1 );
+    $args['attributes']['aptShowCount'] = array( 'type' => 'number', 'default' => 0 );
+    $args['attributes']['aptSkipLast']  = array( 'type' => 'number', 'default' => 0 );
+
+    $args['render_callback'] = 'wabeo_render_core_post_template_sliced';
+    return $args;
+}
+add_filter( 'register_block_type_args', 'wabeo_apt_register_core_post_template_attrs', 10, 2 );
+
+/**
+ * Render callback wrapper for core/post-template with slicing logic.
+ *
+ * @param array    $attributes Block attributes, including our apt* keys.
+ * @param string   $content    Default content (unused here).
+ * @param WP_Block $block      Block instance, with context and inner blocks.
+ * @return string  HTML output for the sliced template.
+ */
+function wabeo_render_core_post_template_sliced( $attributes, $content, $block ) {
+    // If no slicing requested, defer to core renderer when available.
+    $has_slicing = (
+        ( isset( $attributes['aptStartFrom'] ) && (int) $attributes['aptStartFrom'] !== 1 ) ||
+        ( isset( $attributes['aptShowCount'] ) && (int) $attributes['aptShowCount'] !== 0 ) ||
+        ( isset( $attributes['aptSkipLast'] )  && (int) $attributes['aptSkipLast']  !== 0 )
+    );
+    if ( ! $has_slicing && function_exists( 'render_block_core_post_template' ) ) {
+        return render_block_core_post_template( $attributes, $content, $block );
+    }
+
     $page_key            = isset( $block->context['queryId'] ) ? 'query-' . $block->context['queryId'] . '-page' : 'query-page';
-    $enhanced_pagination = isset( $block->context['enhancedPagination'] ) && $block->context['enhancedPagination'];
+    $enhanced_pagination = ! empty( $block->context['enhancedPagination'] );
     $page                = empty( $_GET[ $page_key ] ) ? 1 : (int) $_GET[ $page_key ];
 
     $use_global_query = ( isset( $block->context['query']['inherit'] ) && $block->context['query']['inherit'] );
@@ -46,7 +89,6 @@ function wabeo_render_block_advanced_post_template( $attributes, $content, $bloc
         }
     } else {
         if ( ! function_exists( 'build_query_vars_from_query_block' ) ) {
-            // Function is available in core since 5.8. Bail safely if missing.
             return '';
         }
         $query_args = build_query_vars_from_query_block( $block, $page );
@@ -59,15 +101,14 @@ function wabeo_render_block_advanced_post_template( $attributes, $content, $bloc
 
     // Compute slicing indices (convert 1-based UI to 0-based index).
     $total_posts = (int) $query->post_count;
-    $start_from  = isset( $attributes['startFrom'] ) ? max( 0, (int) $attributes['startFrom'] - 1 ) : 0;
-    $show_count  = isset( $attributes['showCount'] ) ? (int) $attributes['showCount'] : 0; // 0 = all
-    $skip_last   = isset( $attributes['skipLast'] ) ? max( 0, (int) $attributes['skipLast'] ) : 0;
+    $start_from  = isset( $attributes['aptStartFrom'] ) ? max( 0, (int) $attributes['aptStartFrom'] - 1 ) : 0;
+    $show_count  = isset( $attributes['aptShowCount'] ) ? (int) $attributes['aptShowCount'] : 0; // 0 = all
+    $skip_last   = isset( $attributes['aptSkipLast'] ) ? max( 0, (int) $attributes['aptSkipLast'] ) : 0;
 
-    $end_cap     = max( 0, $total_posts - $skip_last );
-    $end_index   = $show_count > 0 ? min( $start_from + $show_count, $end_cap ) : $end_cap;
+    $end_cap   = max( 0, $total_posts - $skip_last );
+    $end_index = $show_count > 0 ? min( $start_from + $show_count, $end_cap ) : $end_cap;
 
     if ( $start_from >= $end_index ) {
-        // Rien à afficher.
         return '';
     }
 
@@ -75,27 +116,22 @@ function wabeo_render_block_advanced_post_template( $attributes, $content, $bloc
         update_post_thumbnail_cache( $query );
     }
 
-    $classnames = '';
-    if ( isset( $block->context['displayLayout'] ) && isset( $block->context['query'] ) ) {
-        if ( isset( $block->context['displayLayout']['type'] ) && 'flex' === $block->context['displayLayout']['type'] ) {
-            $columns    = isset( $block->context['displayLayout']['columns'] ) ? $block->context['displayLayout']['columns'] : 3;
-            $classnames = "is-flex-container columns-{$columns}";
-        }
+    // Classes like core/post-template.
+    $classnames = 'wp-block-post-template';
+    if ( isset( $block->context['displayLayout']['type'] ) && 'flex' === $block->context['displayLayout']['type'] ) {
+        $columns    = isset( $block->context['displayLayout']['columns'] ) ? $block->context['displayLayout']['columns'] : 3;
+        $classnames .= ' is-flex-container columns-' . (int) $columns;
     }
     if ( isset( $attributes['style']['elements']['link']['color']['text'] ) ) {
         $classnames .= ' has-link-color';
     }
-    if ( isset( $attributes['layout']['type'] ) && 'grid' === $attributes['layout']['type'] && ! empty( $attributes['layout']['columnCount'] ) ) {
-        $classnames .= ' ' . sanitize_title( 'columns-' . $attributes['layout']['columnCount'] );
-    }
 
     $wrapper_attributes = get_block_wrapper_attributes( array( 'class' => trim( $classnames ) ) );
 
-    $content = '';
-    $i       = 0;
+    $items = '';
+    $i     = 0;
     while ( $query->have_posts() ) {
         $query->the_post();
-        // Afficher seulement la tranche désirée.
         if ( $i < $start_from ) {
             $i++;
             continue;
@@ -104,49 +140,30 @@ function wabeo_render_block_advanced_post_template( $attributes, $content, $bloc
             break;
         }
 
-        $block_instance                 = $block->parsed_block;
-        $block_instance['blockName']    = 'core/null';
-        $post_id                        = get_the_ID();
-        $post_type                      = get_post_type();
-        $filter_block_context           = static function ( $context ) use ( $post_id, $post_type ) {
+        $block_instance              = $block->parsed_block;
+        $block_instance['blockName'] = 'core/null';
+        $post_id                     = get_the_ID();
+        $post_type                   = get_post_type();
+        $filter_block_context        = static function ( $context ) use ( $post_id, $post_type ) {
             $context['postType'] = $post_type;
             $context['postId']   = $post_id;
             return $context;
         };
         add_filter( 'render_block_context', $filter_block_context, 1 );
-        $block_content = ( new WP_Block( $block_instance ) )->render( array( 'dynamic' => false ) );
+        $inner = ( new WP_Block( $block_instance ) )->render( array( 'dynamic' => false ) );
         remove_filter( 'render_block_context', $filter_block_context, 1 );
 
-        $post_classes            = implode( ' ', get_post_class( 'wp-block-post' ) );
-        $inner_block_directives  = $enhanced_pagination ? ' data-wp-key="post-template-item-' . $post_id . '"' : '';
-        $content                .= '<li' . $inner_block_directives . ' class="' . esc_attr( $post_classes ) . '">' . $block_content . '</li>';
+        $post_classes           = implode( ' ', get_post_class( 'wp-block-post' ) );
+        $inner_block_directives = $enhanced_pagination ? ' data-wp-key="post-template-item-' . $post_id . '"' : '';
+        $items                 .= '<li' . $inner_block_directives . ' class="' . esc_attr( $post_classes ) . '">' . $inner . '</li>';
 
         $i++;
     }
-
     wp_reset_postdata();
 
-    if ( '' === $content ) {
+    if ( '' === $items ) {
         return '';
     }
 
-    return sprintf(
-        '<ul %1$s>%2$s</ul>',
-        $wrapper_attributes,
-        $content
-    );
+    return sprintf( '<ul %1$s>%2$s</ul>', $wrapper_attributes, $items );
 }
-
-/**
- * Register the block via metadata.
- */
-function wabeo_register_advanced_post_template_block() {
-    register_block_type(
-        __DIR__ . '/blocks/advanced-post-template',
-        array(
-            'render_callback'   => 'wabeo_render_block_advanced_post_template',
-            'skip_inner_blocks' => true,
-        )
-    );
-}
-add_action( 'init', 'wabeo_register_advanced_post_template_block' );

@@ -1,6 +1,6 @@
 # Advanced Post Template (WordPress)
 
-Variante du bloc core « Post Template » pour découper l’affichage d’une Query Loop.
+Extension du bloc core « Post Template » pour découper l’affichage d’une Query Loop.
 
 - Démarrer à partir du Xème post (1 = premier)
 - Afficher ensuite X posts (0 = tout ce qui reste)
@@ -13,7 +13,7 @@ Auteur : [Willy Bahuaud](https://wabeo.fr)
 1. Copier le dossier du plugin dans `wp-content/plugins/advanced-post-template` (c’est déjà le cas dans votre setup Local).
 2. Activer le plugin depuis l’admin WordPress.
 
-Le plugin enregistre un bloc Gutenberg `wabeo/advanced-post-template` et rend côté serveur.
+Le plugin ajoute des attributs au bloc `core/post-template` et filtre son rendu côté serveur.
 
 ## Utilisation
 
@@ -45,13 +45,21 @@ Exemples d’agencements sur une même page :
 
 ## Développement
 
-Le bloc est fourni en JavaScript simple (pas de build). Les sources :
+Le plugin utilise `@wordpress/scripts` pour compiler les scripts du bloc.
 
 - PHP : `advanced-post-template.php` (enregistrement + render_callback)
-- Bloc : `blocks/advanced-post-template/block.json`
-- Script éditeur : `blocks/advanced-post-template/index.js`
+- Sources JS : `src/index.js` (extension du bloc core)
+- Build JS : `build/index.js` (chargé automatiquement dans l’éditeur)
 
-Après modification, recharger l’éditeur et/ou vider le cache navigateur si nécessaire.
+Commandes :
+
+```
+npm install
+npm run start   # watcher de développement
+npm run build   # build de production
+```
+
+Astuce : si vous ne souhaitez pas builder, un script de secours existe encore dans `blocks/advanced-post-template/index.js`, mais `block.json` pointe désormais vers la version compilée.
 
 ## Compatibilité
 
@@ -61,4 +69,3 @@ Après modification, recharger l’éditeur et/ou vider le cache navigateur si n
 ## Licence
 
 GPL‑2.0‑or‑later
-
