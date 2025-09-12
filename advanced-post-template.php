@@ -1,7 +1,7 @@
 <?php
 /**
  * Plugin Name:       Advanced Post Template
- * Description:       Ajoute des réglages de tranche (départ, nombre, éléments à ignorer en fin) au bloc natif Post Template et filtre son rendu en front.
+ * Description:       Ajoute des réglages de tronquage (éléments à ignorer au début ou à la fin, nombre maximum à afficher) au bloc natif Post Template et filtre son rendu en front.
  * Author:            Willy Bahuaud
  * Author URI:        https://wabeo.fr
  * Version:           0.1.0

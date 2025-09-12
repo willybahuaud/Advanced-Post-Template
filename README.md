@@ -2,7 +2,7 @@
 
 Une petite extension, très ciblée, du bloc core « Post Template » pour découper l’affichage d’une Query Loop, sans ré‑inventer la roue.
 
-- Démarrer à partir du Xème post (1 = premier)
+- Ignorer X posts au début
 - Afficher ensuite X posts (0 = tout ce qui reste)
 - Ignorer X posts à la fin
 
@@ -21,14 +21,14 @@ Dans l’éditeur :
 
 1. Insérez un bloc « Query Loop ».
 2. Sélectionnez le bloc « Post Template » à l’intérieur.
-3. Dans la sidebar, un panneau « Affichage – Tranche » apparaît :
-   - « Démarrer à partir du Xème post » (1 = premier)
-   - « Afficher X posts » (0 = autant que possible)
-   - « Ignorer X posts à la fin »
+3. Dans la sidebar, un panneau « Tronquer l’affichage » apparaît :
+   - « Tronquer au début »
+   - « Maximum à afficher » (0 = autant que possible)
+   - « Tronquer à la fin »
 
 Exemples d’agencements sur une même page :
 
-- En haut de page, afficher les 3 premiers items : start=1, show=3
+- En haut de page, afficher les 3 premiers items : start=0, show=3
 - Plus bas, afficher le reste sans les 2 derniers : start=4, show=0, skipLast=2
 
 ## Détails techniques
@@ -40,7 +40,7 @@ Exemples d’agencements sur une même page :
 
 ### Attributs (ajoutés au bloc core/post-template)
 
-- `aptStartFrom` (number, défaut 1) : point de départ (1‑based côté UI).
+- `aptStartFrom` (number, défaut 0) : nombre d’éléments ignorés au début de lot.
 - `aptShowCount` (number, défaut 0) : nombre d’éléments à afficher (0 = pas de limite jusqu’à la coupe de fin).
 - `aptSkipLast` (number, défaut 0) : nombre d’éléments ignorés en fin de lot.
 
