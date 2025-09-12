@@ -50,9 +50,14 @@ const withAPTControls = createHigherOrderComponent( ( BlockEdit ) => {
         const { aptStartFrom: s = 1, aptShowCount: c = 0, aptSkipLast: k = 0 } = block.attributes || {};
         const root = document.querySelector( `[data-block="${ clientId }"]` );
         if ( ! root ) return;
-        const ul = root.querySelector( 'ul.wp-block-post-template' );
-        if ( ! ul ) return;
-        const items = Array.from( ul.children ).filter( ( el ) => el && el.tagName === 'LI' );
+        // Try to find the post-template container rendered in the editor
+        const container = root.querySelector( '.wp-block-post-template' ) || root;
+        // Prefer elements with the class used for each post item
+        let items = Array.from( container.querySelectorAll( '.wp-block-post' ) );
+        if ( items.length === 0 ) {
+          // Fallback to LI children in case the editor renders a list
+          items = Array.from( container.querySelectorAll( 'li' ) );
+        }
         const total = items.length;
         items.forEach( ( el ) => el.style.removeProperty( 'display' ) );
         if ( total === 0 ) return;
@@ -79,11 +84,20 @@ const withAPTControls = createHigherOrderComponent( ( BlockEdit ) => {
         raf = requestAnimationFrame( applySlice );
       };
       const unsubscribe = subscribe( run );
+      // Observe DOM changes within the block to re-apply when preview updates
+      const rootEl = () => document.querySelector( `[data-block="${ clientId }"]` );
+      const observer = new MutationObserver( () => run() );
+      const mountObserver = () => {
+        const el = rootEl();
+        if ( el ) observer.observe( el, { childList: true, subtree: true } );
+      };
+      mountObserver();
       // Initial run
       run();
       return () => {
         if ( unsubscribe ) unsubscribe();
         if ( raf ) cancelAnimationFrame( raf );
+        observer.disconnect();
       };
     }, [ props.clientId ] );
     return (
