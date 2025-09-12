@@ -6,6 +6,7 @@ import { useEffect } from '@wordpress/element';
 import { select, subscribe } from '@wordpress/data';
 import { PanelBody, NumberControl as StableNumberControl, __experimentalNumberControl as ExperimentalNumberControl } from '@wordpress/components';
 
+// NumberControl fallback to support WP versions where it's still experimental
 const NumberControl = StableNumberControl || ExperimentalNumberControl;
 
 const ATTRS = {
@@ -44,13 +45,6 @@ const withAPTControls = createHigherOrderComponent( ( BlockEdit ) => {
       const { clientId } = props;
       if ( ! clientId ) return;
 
-      const dbg = ( ...args ) => {
-        if ( window.APT_DEBUG ) {
-          // eslint-disable-next-line no-console
-          console.debug( '[APT]', ...args );
-        }
-      };
-
       const findBlockElement = () => {
         // Normal document first
         let el = document.querySelector( `[data-block="${ clientId }"]` );
@@ -70,15 +64,13 @@ const withAPTControls = createHigherOrderComponent( ( BlockEdit ) => {
         return null;
       };
 
+      // Apply slice to the editor preview
       const applySlice = () => {
         const block = select( 'core/block-editor' ).getBlock( clientId );
         if ( ! block ) return;
         const { aptStartFrom: s = 1, aptShowCount: c = 0, aptSkipLast: k = 0 } = block.attributes || {};
         const root = findBlockElement();
-        if ( ! root ) {
-          dbg( 'root not found for', clientId );
-          return;
-        }
+        if ( ! root ) return;
         // Remove any previous CSS-based approach (older versions)
         const doc = root.ownerDocument || document;
         const legacyStyle = doc.getElementById( `apt-style-${ clientId }` );
@@ -90,10 +82,7 @@ const withAPTControls = createHigherOrderComponent( ( BlockEdit ) => {
             ? root
             : root.querySelector( 'ul.wp-block-post-template, ol.wp-block-post-template' ) );
 
-        if ( ! listEl ) {
-          dbg( 'list not found under root', clientId );
-          return;
-        }
+        if ( ! listEl ) return;
 
         // Gather direct LI children for accurate ordering.
         const allLis = Array.from( listEl.children ).filter( ( el ) => el.tagName === 'LI' );
@@ -106,14 +95,13 @@ const withAPTControls = createHigherOrderComponent( ( BlockEdit ) => {
           }
         } );
 
-        // Consider only currently visible LIs (core may hide duplicates in preview).
+        // Consider only currently visible LIs (core/editor may hide duplicates in preview).
         const visibleLis = allLis.filter( ( el ) => {
           const cs = ( el.ownerDocument || document ).defaultView.getComputedStyle( el );
           return cs && cs.display !== 'none';
         } );
 
         const total = visibleLis.length;
-        dbg( 'visible items', total, { s, c, k } );
         if ( total === 0 ) return;
 
         // Compute indices (1-based UI -> 0-based index) on the visible list.
@@ -122,7 +110,6 @@ const withAPTControls = createHigherOrderComponent( ( BlockEdit ) => {
         const skipLast = Math.max( 0, parseInt( k || 0, 10 ) );
         const endCap = Math.max( 0, total - skipLast );
         const endIndex = showCount > 0 ? Math.min( startIndex + showCount, endCap ) : endCap; // exclusive
-        dbg( 'calc', { startIndex, endIndex, endCap, total } );
 
         // Hide out-of-range on the visible subset only; tag so we can revert later.
         visibleLis.forEach( ( el, i ) => {
@@ -147,17 +134,13 @@ const withAPTControls = createHigherOrderComponent( ( BlockEdit ) => {
         if ( el ) {
           try {
             observer.observe( el, { childList: true, subtree: true } );
-            dbg( 'observer mounted on', clientId );
           } catch (e) {
-            dbg( 'observer error', e );
+            // ignore
           }
-        } else {
-          dbg( 'block el not found on mount' );
         }
       };
       mountObserver();
       // Initial run
-      dbg( 'effect mounted', clientId );
       run();
       return () => {
         if ( unsubscribe ) unsubscribe();
