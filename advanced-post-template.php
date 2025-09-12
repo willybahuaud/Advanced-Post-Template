@@ -17,6 +17,11 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 /**
  * Enqueue editor script to extend the native core/post-template block.
+ *
+ * Loads the compiled JS built with @wordpress/scripts to add extra attributes
+ * and the editor-only slicing behavior that mirrors the server render.
+ *
+ * @return void
  */
 function wabeo_apt_enqueue_editor_assets() {
     $asset_file = __DIR__ . '/build/index.asset.php';
@@ -36,7 +41,15 @@ function wabeo_apt_enqueue_editor_assets() {
 }
 add_action( 'enqueue_block_editor_assets', 'wabeo_apt_enqueue_editor_assets' );
 
-// Fallback: ensure the script also loads in Site Editor (some setups).
+/**
+ * Ensure the script also loads in the Site Editor (FSE) admin screen.
+ *
+ * Some setups may not trigger enqueue_block_editor_assets reliably for site-editor.php.
+ * Hooking admin_enqueue_scripts for that screen makes it more robust.
+ *
+ * @param string $hook Current admin page hook.
+ * @return void
+ */
 function wabeo_apt_admin_enqueue( $hook ) {
     if ( 'site-editor.php' === $hook ) {
         wabeo_apt_enqueue_editor_assets();
@@ -46,6 +59,13 @@ add_action( 'admin_enqueue_scripts', 'wabeo_apt_admin_enqueue' );
 
 /**
  * Add custom attributes to core/post-template and override render callback to slice results.
+ *
+ * Registers the 3 slicing attributes server-side so they are recognized and persisted,
+ * and sets our render callback wrapper that mirrors core’s behavior but slices the results.
+ *
+ * @param array  $args Block type arguments.
+ * @param string $name Block name.
+ * @return array Filtered block type arguments.
  */
 function wabeo_apt_register_core_post_template_attrs( $args, $name ) {
     if ( 'core/post-template' !== $name ) {
@@ -66,10 +86,13 @@ add_filter( 'register_block_type_args', 'wabeo_apt_register_core_post_template_a
 /**
  * Render callback wrapper for core/post-template with slicing logic.
  *
+ * If no slicing is requested via attributes, defers to core’s renderer when available.
+ * Otherwise it builds the query like core, then renders only the desired slice of items.
+ *
  * @param array    $attributes Block attributes, including our apt* keys.
  * @param string   $content    Default content (unused here).
  * @param WP_Block $block      Block instance, with context and inner blocks.
- * @return string  HTML output for the sliced template.
+ * @return string              HTML output for the sliced template.
  */
 function wabeo_render_core_post_template_sliced( $attributes, $content, $block ) {
     // If no slicing requested, defer to core renderer when available.

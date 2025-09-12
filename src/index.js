@@ -156,23 +156,43 @@ const withAPTControls = createHigherOrderComponent( ( BlockEdit ) => {
       const unsubscribe = subscribe( run );
       // Observe la liste si possible (moins de bruit), sinon le bloc root
       const observer = new MutationObserver( () => run() );
+      let observerMounted = false;
+      let mountTimer = 0;
       const mountObserver = () => {
         const rootEl = findBlockElement();
-        if ( ! rootEl ) return;
+        if ( ! rootEl ) {
+          return false;
+        }
         const target = findListElement( rootEl ) || rootEl;
         try {
           observer.observe( target, { childList: true, subtree: true } );
+          observerMounted = true;
+          return true;
         } catch (e) {
-          // ignore
+          return false;
         }
       };
-      mountObserver();
+      // Try to mount immediately, then retry for a short window (e.g., when switching templates)
+      if ( ! mountObserver() ) {
+        let attempts = 0;
+        const tryMount = () => {
+          attempts += 1;
+          if ( observerMounted || attempts > 20 ) return; // ~5s with 250ms steps
+          if ( ! mountObserver() ) {
+            mountTimer = window.setTimeout( tryMount, 250 );
+          } else {
+            run();
+          }
+        };
+        mountTimer = window.setTimeout( tryMount, 250 );
+      }
       // Initial run
       run();
       return () => {
         if ( unsubscribe ) unsubscribe();
         if ( raf ) cancelAnimationFrame( raf );
         observer.disconnect();
+        if ( mountTimer ) window.clearTimeout( mountTimer );
       };
     }, [ props.clientId ] );
     return (
