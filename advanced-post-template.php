@@ -87,12 +87,19 @@ function wabeo_render_core_post_template_sliced( $attributes, $content, $block )
     $page                = empty( $_GET[ $page_key ] ) ? 1 : (int) $_GET[ $page_key ];
 
     $use_global_query = ( isset( $block->context['query']['inherit'] ) && $block->context['query']['inherit'] );
+    $used_main_query  = false;
     if ( $use_global_query ) {
-        // Always clone the global query to avoid advancing the main loop pointer
-        // when multiple post-template blocks are present on the same page.
         global $wp_query;
-        $query = clone $wp_query;
-        $query->rewind_posts();
+        if ( in_the_loop() ) {
+            // Match core behavior: clone when already in the loop.
+            $query = clone $wp_query;
+            $query->rewind_posts();
+        } else {
+            // Use the main query object, but remember to rewind afterwards
+            // so multiple post-template blocks don't affect each other.
+            $query            = $wp_query;
+            $used_main_query  = true;
+        }
     } else {
         if ( ! function_exists( 'build_query_vars_from_query_block' ) ) {
             return '';
@@ -166,6 +173,10 @@ function wabeo_render_core_post_template_sliced( $attributes, $content, $block )
         $i++;
     }
     wp_reset_postdata();
+    if ( $used_main_query && isset( $query ) && $query instanceof WP_Query ) {
+        // Ensure the global query pointer is reset for subsequent blocks.
+        $query->rewind_posts();
+    }
 
     if ( '' === $items ) {
         return '';
